@@ -1,0 +1,15 @@
+1.List the emps who joined before 1981. 
+2.List the Empno, Ename, Sal, Exp of all emps working for Mgr 7369.
+3.Display all the details of the emps whose Comm. Is more than their Sal.
+4.List the emps who are either ‘CLERK’ or ‘ANALYST’.
+5. List the emps who joined on 1-MAY-81,3-DEC-81,17-DEC-81,19-JAN-80.
+6.List the emp who are working for the Deptno 10 or20.
+7.List the Enames those are having five characters in their Names.
+8. List the Enames those are starting with ‘S’ and with five characters.
+9. List the emps those are having four chars and third character must be ‘r’.
+10. List the Five character names starting with ‘S’ and ending with ‘H’.
+11. List the emps whose Sal is four digit number ending with Zero.
+12. List the emps whose names having a character set ‘ll’ together.
+13.List the emps who does not belong to Deptno 20.
+14.List all the Clerks of Deptno 20.
+15.Display the details of SMITH.

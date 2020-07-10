@@ -1,0 +1,108 @@
+{
+  "FolderName": "suite",
+  "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite",
+  "FolderCreatedDate": "Fri May 22 11:33:00 2020",
+  "Folders": [
+    {
+      "FolderName": "Root",
+      "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root",
+      "FolderCreatedDate": "Fri May 22 11:33:00 2020",
+      "Folders": [
+        {
+          "FolderName": "Apple",
+          "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Apple",
+          "FolderCreatedDate": "Thu May 28 10:48:57 2020",
+          "Folders": []
+        },
+        {
+          "FolderName": "Facebook",
+          "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook",
+          "FolderCreatedDate": "Fri May 22 11:33:00 2020",
+          "Folders": [
+            {
+              "FileName": "demo.robot",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook\\demo.robot",
+              "FileCreatedDate": "Fri May 22 17:51:51 2020"
+            },
+            {
+              "FileName": "demo.txt",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook\\demo.txt",
+              "FileCreatedDate": "Fri May 22 17:55:55 2020"
+            },
+            {
+              "FileName": "demo1.robot",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook\\demo1.robot",
+              "FileCreatedDate": "Fri May 22 17:55:55 2020"
+            },
+            {
+              "FolderName": "Groups",
+              "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook\\Groups",
+              "FolderCreatedDate": "Tue May 26 13:33:38 2020",
+              "Folders": [
+                {
+                  "FileName": "data.txt",
+                  "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook\\Groups\\data.txt",
+                  "FileCreatedDate": "Tue May 26 13:57:14 2020"
+                }
+              ]
+            },
+            {
+              "FileName": "sample.txt",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Facebook\\sample.txt",
+              "FileCreatedDate": "Fri May 22 17:55:55 2020"
+            }
+          ]
+        },
+        {
+          "FolderName": "Gmail",
+          "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Gmail",
+          "FolderCreatedDate": "Fri May 22 13:44:41 2020",
+          "Folders": [
+            {
+              "FileName": "recieve.robot",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Gmail\\recieve.robot",
+              "FileCreatedDate": "Fri May 22 13:45:18 2020"
+            },
+            {
+              "FileName": "send.txt",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\Gmail\\send.txt",
+              "FileCreatedDate": "Fri May 22 13:44:51 2020"
+            }
+          ]
+        },
+        {
+          "FolderName": "instagram",
+          "FolderPath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\instagram",
+          "FolderCreatedDate": "Mon May 25 12:46:04 2020",
+          "Folders": [
+            {
+              "FileName": "post",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\instagram\\post",
+              "FileCreatedDate": "Mon May 25 18:27:40 2020"
+            },
+            {
+              "FileName": "post.txt",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\instagram\\post.txt",
+              "FileCreatedDate": "Mon May 25 18:29:59 2020"
+            },
+            {
+              "FileName": "story.txt",
+              "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\instagram\\story.txt",
+              "FileCreatedDate": "Mon May 25 18:29:59 2020"
+            }
+          ]
+        },
+        {
+          "FileName": "sample.txt",
+          "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\sample.txt",
+          "FileCreatedDate": "Fri May 22 13:44:01 2020"
+        },
+        {
+          "FileName": "sample1.robot",
+          "FilePath": "C:\\Users\\LENOVO\\Project_workspace\\KenTestService\\KenTest\\suite\\Root\\sample1.robot",
+          "FileCreatedDate": "Fri May 22 13:44:20 2020"
+        }
+      ]
+    }
+  ]
+}

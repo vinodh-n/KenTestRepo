@@ -1,0 +1,1094 @@
+**---------------------------------------------------------------------*
+* CD Number   : 2100001611
+* Transaction : ZFI_DSO
+* Author      : Sanjib Baral (FZO5833)
+* Date        : 31st Aug 2018
+* Release     : BPR US Release
+* Module      : FI
+* Transport   : ME1K9A0NDN
+* Description : Include for Subroutine
+* Authority   : Z:BUKRS Authority Check is performed in this program.
+*-----------------------------------------------------------------------*
+*-----------------------------------------------------------------------*
+* Modification History
+*-----------------------------------------------------------------------*
+* Author        :
+* Date          :
+* CD Number     :
+* Modifications :
+*-----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  Include           ZFI_DSO_REPORT_SUB
+*&---------------------------------------------------------------------*
+
+FORM validate_selscreen .
+
+* If populated, validate company code
+  IF NOT so_bukrs IS INITIAL.
+    SELECT SINGLE bukrs
+             FROM t001
+             INTO gwa_bsid-bukrs
+            WHERE bukrs EQ so_bukrs-low.
+    IF sy-subrc NE 0.
+      MESSAGE e007(/pra/ta) WITH so_bukrs-low.
+    ENDIF.
+    CLEAR : gwa_bsid-bukrs.
+  ENDIF.
+
+* If populated, validate the customer number
+  IF NOT so_kunnr IS INITIAL.
+    SELECT SINGLE kunnr
+      FROM  kna1
+      INTO gwa_kna1-kunnr
+      WHERE kunnr EQ so_kunnr-low.
+    IF sy-subrc NE 0.
+      MESSAGE e845(co).
+    ENDIF.
+  ENDIF.
+
+* If populated, validate condition type.
+  IF NOT so_kschl IS INITIAL.
+    SELECT SINGLE kschl
+             INTO gwa_konv-kschl
+             FROM t685
+             WHERE kschl IN so_kschl.
+*   If condition type is not valid, give error message.
+    IF sy-subrc NE 0.
+      MESSAGE e200(1bkkbapi).
+    ENDIF.
+  ENDIF.
+
+* If populated, validate document type.
+  IF NOT so_fkart IS INITIAL.
+    SELECT SINGLE fkart
+             INTO gwa_vbrk-fkart
+             FROM tvfk
+             WHERE fkart EQ so_fkart-low.
+*   If document type is not valid, give error message.
+    IF sy-subrc NE 0.
+      MESSAGE e005(/bglocs/fi_vat_mess) WITH so_fkart-low.
+    ENDIF.
+  ENDIF.
+
+* If populated, validate sales organization.
+  IF NOT so_vkorg IS INITIAL.
+    SELECT SINGLE vkorg
+             INTO gv_vkorg
+             FROM tvko
+            WHERE vkorg EQ so_vkorg-low.
+*   If sales organization is not valid, give error message.
+    IF sy-subrc NE 0.
+      MESSAGE e604(o1) WITH  so_vkorg-low	.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SET_DATES
+*&---------------------------------------------------------------------*
+FORM set_dates  USING    p_gjahr
+                         p_periv
+                         p_poper
+                CHANGING p_begda
+                         p_endda.
+
+
+* Get Begin Date
+  CALL FUNCTION 'FIRST_DAY_IN_PERIOD_GET'
+    EXPORTING
+      i_gjahr        = p_gjahr
+      i_periv        = p_periv
+      i_poper        = p_poper
+    IMPORTING
+      e_date         = p_begda
+    EXCEPTIONS
+      input_false    = 1
+      t009_notfound  = 2
+      t009b_notfound = 3
+      OTHERS         = 4.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+* Get Begin Date
+  CALL FUNCTION 'LAST_DAY_IN_PERIOD_GET'
+    EXPORTING
+      i_gjahr        = p_gjahr
+      i_periv        = p_periv
+      i_poper        = p_poper
+    IMPORTING
+      e_date         = p_endda
+    EXCEPTIONS
+      input_false    = 1
+      t009_notfound  = 2
+      t009b_notfound = 3
+      OTHERS         = 4.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SELECT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM select_data .
+
+* Open Items
+  SELECT bukrs kunnr umsks umskz augdt augbl zuonr gjahr belnr buzei
+         budat bldat waers shkzg dmbtr wrbtr zfbdt
+         zbd1t zbd2t zbd3t rebzg rebzt
+    FROM bsid
+    INTO TABLE git_bsid
+    WHERE bukrs IN so_bukrs AND
+          kunnr IN so_kunnr.
+  IF sy-subrc = 0.
+*    Do Nothing
+  ENDIF.
+* Cleared Items (these must be selected as the item could have been
+* open as of the dates specified on the selection screen)
+  SELECT bukrs kunnr umsks umskz augdt augbl zuonr gjahr belnr buzei
+         budat bldat waers shkzg dmbtr wrbtr zfbdt
+         zbd1t zbd2t zbd3t rebzg rebzt
+    FROM bsad
+    APPENDING TABLE git_bsid
+    WHERE bukrs IN so_bukrs AND
+          kunnr IN so_kunnr.
+  IF sy-subrc = 0.
+* To remove cleared documents that should not be reported
+    DELETE git_bsid WHERE augdt <= p_todt AND NOT augbl IS INITIAL.
+  ENDIF.
+* Build a date range table to limit selection of billing documents
+  PERFORM build_date_range.
+
+  SELECT vbeln,fkart,waerk,knumv,fkdat,gjahr,bukrs,kurrf,kunrg,xblnr
+    FROM vbrk
+    INTO TABLE @DATA(lit_vbrk)
+    WHERE fkart IN @so_fkart
+      AND vkorg IN @so_vkorg
+      AND fkdat IN @g_r_selection_date
+      AND bukrs IN @so_bukrs
+      AND kunrg IN @so_kunnr.
+
+  IF sy-subrc = 0 AND lit_vbrk IS NOT INITIAL.
+    SORT lit_vbrk BY vbeln.
+
+    SELECT vbeln, posnr
+      FROM vbrp
+      INTO TABLE @DATA(lit_vbrp)
+      FOR ALL ENTRIES IN @lit_vbrk
+      WHERE vbeln = @lit_vbrk-vbeln.
+    IF sy-subrc = 0.
+      SORT lit_vbrp BY vbeln.
+    ENDIF.
+    LOOP AT lit_vbrp ASSIGNING FIELD-SYMBOL(<l_vbrp>) .
+      READ TABLE lit_vbrk INTO DATA(l_w_vbrk) WITH KEY vbeln = <l_vbrp>-vbeln BINARY SEARCH.
+      IF sy-subrc = 0.
+        gwa_vbrk-fkart = l_w_vbrk-fkart.
+        gwa_vbrk-waerk = l_w_vbrk-waerk.
+        gwa_vbrk-fkdat = l_w_vbrk-fkdat.
+        gwa_vbrk-kunrg = l_w_vbrk-kunrg.
+        gwa_vbrk-bukrs = l_w_vbrk-bukrs.
+        gwa_vbrk-knumv = l_w_vbrk-knumv.
+        gwa_vbrk-gjahr = l_w_vbrk-gjahr.
+        gwa_vbrk-kurrf = l_w_vbrk-kurrf.
+        gwa_vbrk-xblnr = l_w_vbrk-xblnr.
+        gwa_vbrk-vbeln = l_w_vbrk-vbeln.
+        gwa_vbrk-vbeln = <l_vbrp>-vbeln.
+        gwa_vbrk-posnr = <l_vbrp>-posnr.
+        APPEND gwa_vbrk TO git_vbrk.
+        CLEAR : l_w_vbrk, gwa_vbrk.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+* If billing documents were found.
+  IF git_vbrk IS NOT INITIAL. "sy-subrc EQ 0.
+*   Copy billing documents table.
+    MOVE: git_vbrk TO git_vbrk2.
+*   Sort billing documents by document number.
+    SORT git_vbrk2 BY vbeln.
+*   Delete duplicate document numbers, regardless of line item.
+    DELETE ADJACENT DUPLICATES FROM git_vbrk2 COMPARING vbeln.
+*   Delete documents that are not a cancellation of a credit memo.
+    DELETE git_vbrk2 WHERE fkart NE gc_can_cm.
+    IF NOT git_vbrk2 IS INITIAL.
+*     Find preceding documents for canceallation of credit memos.
+      SELECT vbfa~vbelv                "Preceding Document
+             vbfa~vbeln                "Subsequent Document
+             vbak~auart                "Preceding Doc Type
+             FROM ( vbfa INNER JOIN vbak ON vbfa~vbelv = vbak~vbeln )
+             INTO TABLE git_org_doc
+             FOR ALL ENTRIES IN git_vbrk2
+             WHERE vbfa~vbeln EQ git_vbrk2-vbeln
+               AND vbfa~vbtyp_n EQ gc_s
+               AND ( vbak~auart EQ gc_cr_memo OR "'ZXOR' OR "gc_credit_memo OR
+                     vbak~auart EQ gc_zxok ).    " 'ZXOK'   "gc_return ).
+      IF sy-subrc = 0.
+*   Sort the preceding documents by document number.
+        SORT git_org_doc BY vbeln.
+      ENDIF.
+    ENDIF.
+*   No longer need copy of billing documents.
+    FREE: git_vbrk2.
+*   For all billing documents that are a cancellation of a credit memo.
+    LOOP AT git_vbrk ASSIGNING FIELD-SYMBOL(<l_fs_vbrk>) WHERE fkart EQ gc_can_cm. "gwa_vbrk
+*     Save the table index for possible modification of record.
+      gv_sytabix = sy-tabix.
+*     Find the preceding document and type.
+      READ TABLE git_org_doc INTO gwa_org_doc
+                             WITH KEY vbeln = <l_fs_vbrk>-vbeln
+                             BINARY SEARCH.
+*     If a preceding document/type was found.
+      IF sy-subrc EQ 0.
+*       Check the preceding document type to see if it is in the selection screen.
+        IF gwa_org_doc-auart IN so_fkart.
+*         If the preceding document type exists and is on the
+*         selection screen and is a return, change the document type
+*         to zi, cancellation of a return.
+          IF gwa_org_doc-auart EQ gc_return.
+            <l_fs_vbrk>-fkart = gc_can_ret.
+            MODIFY git_vbrk FROM <l_fs_vbrk> INDEX gv_sytabix TRANSPORTING fkart.
+          ENDIF.
+*       If the document was not on the selection screen, remove it.
+        ELSE.
+          <l_fs_vbrk>-flag = gc_x.
+          MODIFY git_vbrk FROM <l_fs_vbrk> INDEX gv_sytabix TRANSPORTING flag.
+        ENDIF.
+*     If no preceding document existed, remove billing document.
+      ELSE.
+        <l_fs_vbrk>-flag = gc_x.
+        MODIFY git_vbrk FROM <l_fs_vbrk> INDEX gv_sytabix TRANSPORTING flag.
+      ENDIF.
+      CLEAR: <l_fs_vbrk>,
+             gwa_org_doc,
+             gv_sytabix.
+    ENDLOOP.
+
+*   Delete billing documents that were marked for deletion.
+    DELETE git_vbrk WHERE flag EQ gc_x.
+
+*   No longer need preceding document information.
+    FREE git_org_doc.
+    IF NOT git_vbrk IS INITIAL.
+*       For billing documents, get their condition value.
+*       Use this value instead of the billing document value.
+      SELECT knumv kposn kschl kwert kkurs
+        FROM konv
+        INTO TABLE git_konv
+        FOR ALL ENTRIES IN git_vbrk
+        WHERE knumv EQ git_vbrk-knumv
+        AND kschl IN so_kschl.
+*     If condition values found.
+      IF sy-subrc EQ 0.
+        SORT git_konv BY knumv kposn.
+        CLEAR gwa_konv.
+*         Collect the table by condition type, condition item.
+        LOOP AT git_konv ASSIGNING FIELD-SYMBOL(<l_fs_konv>). "
+          gwa_konv = <l_fs_konv>.
+          CLEAR gwa_konv-kschl.
+          COLLECT gwa_konv INTO git_col_konv.
+          MODIFY git_col_konv FROM gwa_konv INDEX sy-tabix TRANSPORTING kkurs.
+          CLEAR gwa_konv.
+        ENDLOOP.
+
+        SORT git_col_konv BY knumv kposn.
+*       If no condition values found, give error message.
+      ELSE.
+        MESSAGE TEXT-008 TYPE gc_error."'E'.
+      ENDIF.
+      FREE git_konv.
+    ENDIF.
+  ENDIF.
+*   If summarize by credit control area account number selected,
+*   get the credit control account for the customers
+  IF cb_cca = abap_true.
+    SELECT kunnr knkli
+     INTO TABLE git_knkk
+     FROM knkk
+     WHERE kunnr IN so_kunnr AND
+           kkber = gc_credit_control_area.
+    IF sy-subrc = 0.
+* Do Nothing
+    ENDIF.
+  ENDIF.
+
+  IF git_vbrk IS NOT INITIAL.
+    SELECT bukrs belnr gjahr xblnr kursf hwaer
+      FROM bkpf
+      INTO TABLE git_bkpf
+      FOR ALL ENTRIES IN git_vbrk
+      WHERE bukrs = git_vbrk-bukrs
+      AND   xblnr = git_vbrk-xblnr.
+    IF sy-subrc = 0.
+      SORT git_bkpf BY bukrs xblnr."belnr.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_DATE_RANGE
+*&---------------------------------------------------------------------*
+*       This form will build a range table of dates and calculate
+*       the number of days in the current and previous months
+*----------------------------------------------------------------------*
+FORM build_date_range .
+
+  DATA: lv_poper TYPE poper,
+        lv_gjahr TYPE gjahr.
+
+  CLEAR: lv_poper, lv_gjahr.
+
+* Set previous period from and to date
+  CALL FUNCTION 'CKML_F_GET_PREVIOUS_PERIOD'
+    EXPORTING
+      input_period    = so_poper-low
+      input_year      = so_gjahr-low
+      input_periv     = p_periv
+    IMPORTING
+      previous_period = lv_poper
+      previous_year   = lv_gjahr.
+
+  PERFORM set_dates USING lv_gjahr p_periv lv_poper
+                 CHANGING gv_previous_from_date gv_previous_to_date.
+
+* Calculate Number of days in the current month.
+  CALL FUNCTION 'HR_E_NUM_OF_DAYS_OF_MONTH'
+    EXPORTING
+      p_fecha        = p_todt
+    IMPORTING
+      number_of_days = gv_current_number_of_days
+    EXCEPTIONS
+      OTHERS         = 1.
+  IF sy-subrc NE 0.
+    MESSAGE TEXT-006 TYPE gc_error.
+  ENDIF.
+
+* Calculate Number of days in the previous month.
+  CALL FUNCTION 'HR_E_NUM_OF_DAYS_OF_MONTH'
+    EXPORTING
+      p_fecha        = gv_previous_from_date
+    IMPORTING
+      number_of_days = gv_previous_number_of_days
+    EXCEPTIONS
+      OTHERS         = 1.
+  IF sy-subrc NE 0.
+    MESSAGE TEXT-007 TYPE gc_error."'E'.
+  ENDIF.
+
+* Populate the range table used to select billing documents
+  REFRESH g_r_selection_date.
+
+* If year to date use 01/01/YYYY as from date
+  IF cb_ytd IS INITIAL.
+    MOVE gc_i                  TO g_r_selection_date-sign. "'I'
+    MOVE gc_btween             TO g_r_selection_date-option.
+    MOVE gv_previous_from_date TO g_r_selection_date-low.
+    MOVE p_todt                TO g_r_selection_date-high.
+    APPEND g_r_selection_date.
+  ELSE.
+* If not year to date, use previous from date as from date
+* The first begin date of a fiscal year is no longer 01/01.
+    CALL FUNCTION 'FIRST_DAY_IN_PERIOD_GET'
+      EXPORTING
+        i_gjahr = so_gjahr-low
+        i_periv = p_periv
+        i_poper = gc_01 "'01'
+      IMPORTING
+        e_date  = gv_start_of_year.
+
+    MOVE gc_i                 TO g_r_selection_date-sign. "'I'
+    MOVE gc_btween            TO g_r_selection_date-option.
+
+    IF gv_start_of_year LT gv_previous_from_date.
+      MOVE gv_start_of_year      TO g_r_selection_date-low.
+    ELSE.
+      MOVE gv_previous_from_date TO g_r_selection_date-low.
+    ENDIF.
+    MOVE p_todt              TO g_r_selection_date-high.
+    APPEND g_r_selection_date.
+
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  MOVE_RECORDS
+*&---------------------------------------------------------------------*
+*       This form moves all the selected data to one output table.
+*----------------------------------------------------------------------*
+FORM move_records .
+
+  CLEAR: gwa_vbrk,
+         gwa_billing_summary.
+* For each billing document, summarize the activity by customer and
+* period (current, previous, and year-to-date)
+  SORT git_col_konv BY knumv kposn.
+  LOOP AT git_vbrk ASSIGNING FIELD-SYMBOL(<l_fs_vbrk>). "INTO gwa_vbrk.
+*   Based on the document type, multiple the amount by - 1.
+*    SORT git_bkpf BY bukrs xblnr."belnr.
+    READ TABLE git_bkpf INTO gwa_bkpf WITH KEY bukrs = <l_fs_vbrk>-bukrs
+                                               xblnr = <l_fs_vbrk>-xblnr BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      READ TABLE git_col_konv INTO gwa_col_konv
+                        WITH KEY knumv = <l_fs_vbrk>-knumv
+                                 kposn = <l_fs_vbrk>-posnr BINARY SEARCH.
+      IF sy-subrc = 0.
+        IF <l_fs_vbrk>-fkart = gc_zxrc OR "gc_return  OR
+           <l_fs_vbrk>-fkart = gc_zxci OR"gc_credit_memo OR
+           <l_fs_vbrk>-fkart = gc_z1.  "gc_can_invoice.
+          gwa_col_konv-kwert = gwa_col_konv-kwert * -1.
+        ENDIF.
+      ENDIF.
+
+*   Based on the doucment date and the selection screen date
+*   move amount to correct summary period.
+      IF <l_fs_vbrk>-fkdat >= p_frmdt.
+        IF gwa_col_konv-kkurs IS NOT INITIAL.
+          IF gwa_bkpf-kursf IS NOT INITIAL.
+            gwa_billing_summary-current = gwa_col_konv-kwert * gwa_col_konv-kkurs.
+            gwa_billing_summary-current = gwa_col_konv-kwert * gwa_bkpf-kursf.
+          ELSE.
+            gwa_billing_summary-current = gwa_col_konv-kwert * gwa_col_konv-kkurs.
+            gwa_billing_summary-current = gwa_col_konv-kwert * 1."gwa_bkpf-kursf.
+          ENDIF.
+        ENDIF.
+      ELSEIF <l_fs_vbrk>-fkdat >= gv_previous_from_date AND
+             <l_fs_vbrk>-fkdat <= gv_previous_to_date.
+        IF gwa_col_konv-kkurs IS NOT INITIAL.
+          IF gwa_bkpf-kursf IS NOT INITIAL.
+            gwa_billing_summary-previous = gwa_col_konv-kwert * gwa_bkpf-kursf.
+          ELSE.
+            gwa_billing_summary-previous = gwa_col_konv-kwert * 1.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      IF cb_ytd = abap_true."'X'.
+        IF <l_fs_vbrk>-fkdat GE gv_start_of_year
+          AND <l_fs_vbrk>-fkdat LE p_todt.
+          IF gwa_col_konv-kkurs IS NOT INITIAL.
+            IF gwa_bkpf-kursf IS NOT INITIAL.
+              gwa_billing_summary-ytd = gwa_col_konv-kwert * gwa_bkpf-kursf.
+            ELSE.
+              gwa_billing_summary-ytd = gwa_col_konv-kwert * 1.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      MOVE <l_fs_vbrk>-kunrg TO gwa_billing_summary-kunnr.
+      MOVE <l_fs_vbrk>-bukrs TO gwa_billing_summary-bukrs.
+      MOVE gwa_bkpf-hwaer TO gwa_billing_summary-waers.
+*   Collect the work area into the summary internal table
+      COLLECT gwa_billing_summary INTO git_billing_summary.
+      CLEAR: gwa_billing_summary,
+             gwa_col_konv.
+    ENDIF.
+  ENDLOOP.
+
+* Release the intenal table, as it is not longer needed
+  FREE git_vbrk.
+
+* For each document in the AR balance internal table, summarize by
+* period total, current, or past due and customer and company code
+  PERFORM collect_bsid.
+
+* Prepare each AR summary record for output
+  PERFORM prepare_output.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  COLLECT_BSID
+*&---------------------------------------------------------------------*
+*       This form summarizes AR balances by company code and company
+*----------------------------------------------------------------------*
+FORM collect_bsid .
+
+  CLEAR: gwa_bsid,
+         gwa_bsid_summary,
+         faede.
+
+* Local variable for calculating days past due
+  DATA: lv_tage TYPE i.
+
+* For each document in the AR balance internal table, summarize by
+* period total, current, or past due and customer and company code
+  LOOP AT git_bsid ASSIGNING FIELD-SYMBOL(<l_fs_bsid>). "INTO gwa_bsid.
+*   If the document was created after the end period on the selection
+*   screen it will not be considered
+    IF <l_fs_bsid>-budat > p_todt.
+      CONTINUE.
+    ENDIF.
+*   Populate structure to used to determine the due date
+    MOVE-CORRESPONDING <l_fs_bsid> TO faede.
+    MOVE gc_koart               TO faede-koart.
+
+*   Call function to determine the net due date
+    CALL FUNCTION 'DETERMINE_DUE_DATE'
+      EXPORTING
+        i_faede                    = faede
+      IMPORTING
+        e_faede                    = faede
+      EXCEPTIONS
+        account_type_not_supported = 1
+        OTHERS                     = 2.
+
+*   If the call function is successful
+    IF sy-subrc EQ 0.
+*     If a credit multiple the amount by - 1.
+      IF <l_fs_bsid>-shkzg EQ gc_credit_ind.
+        <l_fs_bsid>-dmbtr = <l_fs_bsid>-dmbtr * -1.
+      ENDIF.
+*     Calculate the days past due by subtracting the net due date
+*     from the selection screen end date
+      lv_tage = p_todt - faede-netdt.
+*     If the days past due is greater than zero, past due
+      IF lv_tage > 0.
+        MOVE <l_fs_bsid>-dmbtr TO gwa_bsid_summary-past.
+      ELSE.
+*     If the days past due zero or less than current
+        MOVE <l_fs_bsid>-dmbtr TO gwa_bsid_summary-current.
+      ENDIF.
+
+*     Always add to total receivables
+      MOVE <l_fs_bsid>-dmbtr TO gwa_bsid_summary-total.
+      MOVE <l_fs_bsid>-kunnr TO gwa_bsid_summary-kunnr.
+      MOVE <l_fs_bsid>-bukrs TO gwa_bsid_summary-bukrs.
+      MOVE <l_fs_bsid>-waers TO gwa_bsid_summary-waers.
+*     Collect to summarize by company code and customer
+      COLLECT gwa_bsid_summary INTO git_bsid_summary.
+
+    ELSE.
+*     If call function unsuccessful, abend
+      MESSAGE TEXT-009 TYPE gc_error."'E'.
+    ENDIF.
+    CLEAR: gwa_bsid_summary,
+           faede.
+  ENDLOOP.
+
+* Release AR document internal table
+  FREE git_bsid.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  PREPARE_OUTPUT
+*&---------------------------------------------------------------------*
+*       This form prepares the internal table to be output
+*----------------------------------------------------------------------*
+FORM prepare_output .
+
+  CLEAR: gwa_bsid_summary,
+         gwa_billing_summary.
+
+* For each AR summary, prepare the record for output
+  LOOP AT git_bsid_summary ASSIGNING FIELD-SYMBOL(<l_fs_bsid_summary>). "INTO gwa_bsid_summary.
+*   Find the billing information for the customer by reading the
+*   billing summary internal table
+*    SORT git_billing_summary BY kunnr bukrs.
+    READ TABLE git_billing_summary INTO gwa_billing_summary
+                               WITH KEY kunnr = <l_fs_bsid_summary>-kunnr
+                                        bukrs = <l_fs_bsid_summary>-bukrs BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      MOVE gwa_billing_summary-current  TO <l_fs_bsid_summary>-current_sales.
+      MOVE gwa_billing_summary-previous TO <l_fs_bsid_summary>-previous_sales.
+      MOVE gwa_billing_summary-ytd      TO <l_fs_bsid_summary>-ytd_sales.
+      MOVE gwa_billing_summary-waers    TO <l_fs_bsid_summary>-waers.
+*    Delete record from billing summary table, so it is not added
+*    to the output internal table twice
+      DELETE git_billing_summary INDEX sy-tabix.
+    ENDIF.
+
+*   If the summarize by credit control account is selected,
+*   get the "master" account
+    IF cb_cca = abap_true."'X'.
+      CLEAR: gwa_knkk.
+      READ TABLE git_knkk INTO gwa_knkk WITH KEY
+                        kunnr = <l_fs_bsid_summary>-kunnr BINARY SEARCH.
+      IF sy-subrc EQ 0.
+        MOVE gwa_knkk-knkli TO <l_fs_bsid_summary>-kunnr.
+      ENDIF.
+    ENDIF.
+
+*   Modify the summary internal table before outputing the list
+    MODIFY git_bsid_summary FROM <l_fs_bsid_summary>.
+    CLEAR: gwa_billing_summary.
+
+  ENDLOOP.
+
+* If any customers remain in the billing summary internal table
+* append an entry to the bsid summary internal table so even customers
+* without AR balances are reported
+  IF NOT git_billing_summary IS INITIAL.
+    CLEAR: gwa_billing_summary,
+           gwa_bsid_summary.
+    LOOP AT git_billing_summary ASSIGNING FIELD-SYMBOL(<l_fs_billing_summary>). "INTO gwa_billing_summary.
+      MOVE <l_fs_billing_summary>-bukrs    TO gwa_bsid_summary-bukrs.
+      MOVE <l_fs_billing_summary>-kunnr    TO gwa_bsid_summary-kunnr.
+      MOVE <l_fs_billing_summary>-current  TO gwa_bsid_summary-current_sales.
+      MOVE <l_fs_billing_summary>-previous TO gwa_bsid_summary-previous_sales.
+      MOVE <l_fs_billing_summary>-ytd      TO gwa_bsid_summary-ytd_sales.
+      MOVE <l_fs_billing_summary>-waers    TO gwa_bsid_summary-waers.
+      APPEND gwa_bsid_summary           TO git_bsid_summary.
+      CLEAR: gwa_bsid_summary.
+    ENDLOOP.
+  ENDIF.
+
+* Get Customer Names
+  IF NOT git_bsid_summary IS INITIAL.
+    PERFORM get_customer_names.
+  ENDIF.
+
+* Another pass to place the customer name on the output internal table
+* records, this loop also summarizes by credit control account
+* if the checkbox was selected & the customer number were modified above
+  CLEAR: gwa_bsid_summary,
+         gwa_kna1.
+  LOOP AT git_bsid_summary ASSIGNING FIELD-SYMBOL(<l_fs_bsid_summary_l>). "INTO gwa_bsid_summary.
+*   Find the customer name for the entry in the summary internal table
+    READ TABLE git_kna1 INTO gwa_kna1
+                        WITH KEY kunnr = <l_fs_bsid_summary_l>-kunnr
+                        BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      MOVE gwa_kna1-name1         TO <l_fs_bsid_summary_l>-name1.
+      COLLECT <l_fs_bsid_summary_l>  INTO git_bsid_output.
+    ENDIF.
+    CLEAR: gwa_kna1.
+  ENDLOOP.
+
+* Another pass to place the customer name on the output internal table
+* records, this loop also summarizes by credit control account
+* if the checkbox was selected & the customer number were modified above
+  CLEAR: gwa_bsid_output,
+         gwa_dso_total.
+
+* IF the combine company codes checkbox is indicated, produce a report
+* Summarizing the customer orders.
+  DESCRIBE TABLE so_bukrs LINES gv_vxlin.
+  IF ( cb_ccc = abap_true AND "'X' AND
+    ( ( gv_vxlin > 1 ) OR
+       NOT so_bukrs-high IS INITIAL ) ).
+
+    LOOP AT git_bsid_output ASSIGNING FIELD-SYMBOL(<l_fs_bsid_output>). "INTO gwa_bsid_output.
+      MOVE gc_star TO <l_fs_bsid_output>-bukrs. "'****'
+      COLLECT <l_fs_bsid_output> INTO git_dso_total.
+    ENDLOOP.
+
+    CLEAR git_bsid_output.
+    MOVE git_dso_total TO git_bsid_output.
+    CLEAR git_dso_total.
+  ENDIF.
+
+* Process items by bukrs to get a individual total per bukrs
+  CLEAR gwa_bsid_output.
+  LOOP AT git_bsid_output ASSIGNING FIELD-SYMBOL(<l_fs_bsid_output_l>)."INTO gwa_bsid_output.
+*   If division by zero, do not calculate, default DSO ratio to zero
+    gwa_bsid_output = <l_fs_bsid_output_l>.
+    IF gwa_bsid_output-previous_sales = 0.
+      gwa_bsid_output-dso = 0.
+    ELSE.
+*     Calculate the DSO ratio
+      gwa_bsid_output-dso =
+       ( gwa_bsid_output-total - gwa_bsid_output-current_sales ) /
+       ( gwa_bsid_output-previous_sales / gv_previous_number_of_days ).
+*     Subtract the current number of days from the ratio
+      gwa_bsid_output-dso =
+              gwa_bsid_output-dso + gv_current_number_of_days.
+    ENDIF.
+    MODIFY git_bsid_output FROM gwa_bsid_output.
+
+* Create DSO total, if DSO total item is an individual
+* Bukrs, place a '1' in Customer number in order to sort later in the
+* program.  If complete report total, place a '2'.
+*    CLEAR <l_fs_bsid_output_l>-name1. " Raj
+
+    IF ( gwa_bsid_output-bukrs NE gc_star AND " '****' AND
+      ( ( gv_vxlin > 1 ) OR
+        NOT so_bukrs-high IS INITIAL ) ).
+      CLEAR gwa_bsid_output-kunnr.
+      MOVE gwa_bsid_output-bukrs TO gwa_bsid_output-name1. "<l_fs_bsid_output_l>-name1.
+      COLLECT gwa_bsid_output INTO git_dso_total.
+    ENDIF.
+
+    CLEAR gwa_bsid_output-kunnr. " Raj
+    MOVE gc_star TO  gwa_bsid_output-bukrs. "<l_fs_bsid_output_l>-bukrs. "'****'
+    MOVE gc_tot  TO  gwa_bsid_output-name1. "<l_fs_bsid_output_l>-name1. "'TOTAL'
+    COLLECT gwa_bsid_output INTO git_dso_total.
+    CLEAR : gwa_bsid_output.
+  ENDLOOP.
+
+* Calculate the actual DSO of the totaled items
+  CLEAR gwa_dso_total.
+  LOOP AT git_dso_total ASSIGNING FIELD-SYMBOL(<l_fs_dso_total>)." INTO gwa_dso_total. "
+* Calculate Total DSO.
+    gwa_dso_total = <l_fs_dso_total>.
+    IF gwa_dso_total-previous_sales = 0.
+      gwa_dso_total-dso = 0.
+    ELSE.
+
+*     Calculate the DSO ratio
+      CLEAR gwa_dso_total-dso.
+      gwa_dso_total-dso = (
+              ( gwa_dso_total-total - gwa_dso_total-current_sales ) /
+          ( gwa_dso_total-previous_sales / gv_previous_number_of_days ) ).
+*     Subtract the current number of days from the ratio
+      gwa_dso_total-dso =
+              gwa_dso_total-dso + gv_current_number_of_days.
+    ENDIF.
+    MODIFY git_dso_total FROM gwa_dso_total.
+    CLEAR: gwa_dso_total.
+  ENDLOOP.
+
+* Release internal tables no longer needed
+  FREE: git_kna1,
+        git_billing_summary,
+        git_bsid_summary.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GET_CUSTOMER_NAMES
+*&---------------------------------------------------------------------*
+*       This form select customer names from the customer master table
+*       into an internal table
+*----------------------------------------------------------------------*
+FORM get_customer_names .
+  IF git_bsid_summary[] IS NOT INITIAL.
+    SELECT kunnr name1
+        INTO TABLE git_kna1
+        FROM kna1
+        FOR ALL ENTRIES IN git_bsid_summary
+        WHERE kunnr = git_bsid_summary-kunnr.
+    IF sy-subrc = 0.
+* Do Nothing
+    ENDIF.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  PERF_EVENT
+*&---------------------------------------------------------------------*
+*       This form allows the display list function module to
+*       respond to list events such as top-of-page.  This allows
+*       dynamic call to forms named in wa_events-form.
+*----------------------------------------------------------------------*
+FORM perf_event.
+
+  CALL FUNCTION 'REUSE_ALV_EVENTS_GET'
+    EXPORTING
+      i_list_type = 0
+    IMPORTING
+      et_events   = git_events.
+
+* Set up event for top of page
+  CLEAR: g_wa_events.
+
+  READ TABLE git_events INTO g_wa_events
+                      WITH KEY name = gc_end_of_list.
+  IF sy-subrc = 0.
+    MOVE gc_formname_end_of_list TO g_wa_events-form.
+    APPEND g_wa_events TO git_events.
+  ENDIF.
+
+ENDFORM.                    "f_event
+*&---------------------------------------------------------------------*
+*&      Form  PERF_LAYOUT
+*&---------------------------------------------------------------------*
+*       This form builds a structure that will be passed to the
+*       list_display function module containing attributes for the
+*       lines displayed
+*----------------------------------------------------------------------*
+FORM perf_layout.
+
+  gv_layout-f2code            = gc_pf2code.   "UCOMM for at line selection
+  gv_layout-zebra             = abap_true.         "Alternate shading in list
+  gv_layout-no_totalline      = abap_true.         "Get rid of total line
+* Eliminate Company Code Subtotals if the box is selected
+  IF cb_ccc = abap_true.
+    gv_layout-no_subtotals      = abap_true.       "Get Rid of Subtotals
+  ENDIF.
+
+ENDFORM.                    "f_layout
+*&---------------------------------------------------------------------*
+*&      Form  PERF_PRINT
+*&---------------------------------------------------------------------*
+*       This form builds an structure that will be passed to the
+*       list_display function module containing attributes for print
+*       options
+*----------------------------------------------------------------------*
+FORM perf_print.
+* Set print attributes no list statistics, select option information,
+* or cover page will be printed
+  gv_print-no_print_selinfos  = abap_true.
+  gv_print-no_print_listinfos = abap_true.
+  gv_print-no_coverpage       = abap_true.
+ENDFORM.                    "f_print
+*&---------------------------------------------------------------------*
+*&      Form  PERF_fieldcat
+*&---------------------------------------------------------------------*
+*       This form builds an internal table passed to the list_display
+*       function module containing attributes for column displays on
+*       the list
+*----------------------------------------------------------------------*
+FORM perf_fieldcat.
+
+  REFRESH git_fieldcat.
+* Set up the company code column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_bukrs.     "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.   "Internal Table name
+  g_wa_fieldcat-col_pos       = 1.            "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-010.     "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.         "Use the Meduium Desc
+  g_wa_fieldcat-ref_fieldname = gc_bukrs.     "Data Dictionary Reference
+  g_wa_fieldcat-ref_tabname   = gc_company_code. "Data Dictionary Reference
+  g_wa_fieldcat-outputlen     = 4.            "Output Length
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the customer number column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_kunnr.         "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.       "Internal Table name
+  g_wa_fieldcat-col_pos       = 2.                "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-011.         "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.             "Use the Meduium Desc
+  g_wa_fieldcat-ref_fieldname = gc_kunnr.
+  g_wa_fieldcat-ref_tabname   = gc_customer_master.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the customer name column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_name1.        "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.      "Internal Table name
+  g_wa_fieldcat-col_pos       = 3.               "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-012.        "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.            "Use the Meduium Desc
+  g_wa_fieldcat-outputlen     = 25.              "Output Length
+  g_wa_fieldcat-ref_fieldname = gc_name1.
+  g_wa_fieldcat-ref_tabname   = gc_customer_master.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the total receivables column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_total.        "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.      "Internal Table name
+  g_wa_fieldcat-col_pos       = 4.               "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-013.        "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.            "Use the Meduium Desc
+  g_wa_fieldcat-do_sum        = abap_true       ."Subtotal Col
+  g_wa_fieldcat-cfieldname    = gc_waers.        "Field for currency
+  g_wa_fieldcat-ctabname      = gc_summary.      "Table for currency
+  g_wa_fieldcat-ref_fieldname = gc_dmbtr.
+  g_wa_fieldcat-ref_tabname   = gc_company_index.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the current receivables column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_current.     "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.     "Internal Table name
+  g_wa_fieldcat-col_pos       = 5.              "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-014.       "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.           "Use the Meduium Desc
+  g_wa_fieldcat-do_sum        = abap_true.      "Subtotal Col
+  g_wa_fieldcat-cfieldname    = gc_waers.       "Field for currency
+  g_wa_fieldcat-ctabname      = gc_summary.     "Table for currency
+  g_wa_fieldcat-ref_fieldname = gc_dmbtr.
+  g_wa_fieldcat-ref_tabname   = gc_company_index.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the past receivables column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_past.         "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.      "Internal Table name
+  g_wa_fieldcat-col_pos       = 6.               "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-015.        "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.            "Use the Meduium Desc
+  g_wa_fieldcat-do_sum        = abap_true.       "Subtotal Col
+  g_wa_fieldcat-cfieldname    = gc_waers.        "Field for currency
+  g_wa_fieldcat-ctabname      = gc_summary.      "Table for currency
+  g_wa_fieldcat-ref_fieldname = gc_dmbtr.
+  g_wa_fieldcat-ref_tabname   = gc_company_index.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the DSO column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_dso.          "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.      "Internal Table name
+  g_wa_fieldcat-col_pos       = 7.                "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-016.         "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.             "Use the Meduium Desc
+  g_wa_fieldcat-decimals_out  = 1.                "Number of Decimal Places
+  g_wa_fieldcat-ref_fieldname = gc_anz.
+  g_wa_fieldcat-ref_tabname   = gc_p0055.
+  APPEND  g_wa_fieldcat TO git_fieldcat.
+
+* Set up the current sales receivables column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_current_sales. "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.       "Internal Table name
+  g_wa_fieldcat-col_pos       = 8.                "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-017.         "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.             "Use the Meduium Desc
+  g_wa_fieldcat-do_sum        = abap_true.        "   "Subtotal Col
+  g_wa_fieldcat-cfieldname    = gc_waers.         "Field for currency
+  g_wa_fieldcat-ctabname      = gc_summary.       "Table for currency
+  g_wa_fieldcat-ref_fieldname = gc_netwr.
+  g_wa_fieldcat-ref_tabname   = gc_billing_item.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the previous sales receivables column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname     = gc_previous_sales. "Column Name
+  g_wa_fieldcat-tabname       = gc_summary.        "Internal Table name
+  g_wa_fieldcat-col_pos       = 9.                 "Pos of Col in list
+  g_wa_fieldcat-seltext_m     = TEXT-018.          "Title of the Col
+  g_wa_fieldcat-ddictxt       = gc_m.              "Use the Meduium Desc
+  g_wa_fieldcat-do_sum        = abap_true.         "Subtotal Col
+  g_wa_fieldcat-cfieldname    = gc_waers.          "Field for currency
+  g_wa_fieldcat-ctabname      = gc_summary.        "Table for currency
+  g_wa_fieldcat-ref_fieldname = gc_netwr.
+  g_wa_fieldcat-ref_tabname   = gc_billing_item.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the previous sales receivables column
+  CLEAR g_wa_fieldcat.
+  IF cb_ytd = abap_true.
+    g_wa_fieldcat-fieldname      = gc_ytd_sales.    "Column Name
+    g_wa_fieldcat-tabname        = gc_summary.      "Internal Table name
+    g_wa_fieldcat-col_pos        = 10.              "Pos of Col in list
+    g_wa_fieldcat-seltext_m      = TEXT-019.        "Title of the Col
+    g_wa_fieldcat-ddictxt        = gc_m.            "Use the Meduium Desc
+    g_wa_fieldcat-do_sum         = abap_true.       "Subtotal Col
+    g_wa_fieldcat-cfieldname     = gc_waers.        "Field for currency
+    g_wa_fieldcat-ctabname       = gc_summary.      "Table for currency
+    g_wa_fieldcat-ref_fieldname  = gc_netwr.
+    g_wa_fieldcat-ref_tabname    = gc_billing_item.
+  ELSE.
+    g_wa_fieldcat-no_out         = abap_true.       "Do not display column
+  ENDIF.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+* Set up the currency column
+  CLEAR g_wa_fieldcat.
+  g_wa_fieldcat-fieldname      = gc_waers.          "Column Name
+  g_wa_fieldcat-tabname        = gc_summary.        "Internal Table name
+  g_wa_fieldcat-seltext_m      = TEXT-020.          "Title of the Col
+  g_wa_fieldcat-ddictxt        = gc_m.              "Use the Meduium Desc
+  g_wa_fieldcat-no_out         = abap_true.         "Subtotal Col
+  g_wa_fieldcat-ref_fieldname  = gc_waers.
+  g_wa_fieldcat-ref_tabname    = gc_company_index.
+  APPEND g_wa_fieldcat TO git_fieldcat.
+
+ENDFORM.                    "f_fieldcat
+*&---------------------------------------------------------------------*
+*&      Form  PERF_SORT
+*&---------------------------------------------------------------------*
+*       This form builds an internal table passed to the list_display
+*       function module containing attributes for sorting the list
+*----------------------------------------------------------------------*
+FORM perf_sort.
+
+  REFRESH: git_sort.
+
+  CLEAR:   g_wa_sort.
+  g_wa_sort-fieldname = gc_bukrs.         "Col/Field name to sort
+  g_wa_sort-tabname   = gc_summary.       "Table name to sort
+  g_wa_sort-spos      = 1.                "Primary Sort Field
+  g_wa_sort-up        = abap_true.        "Sort Ascending
+  g_wa_sort-subtot    = abap_true.        "Subtotal/Control Break
+  APPEND g_wa_sort TO git_sort.
+
+  CLEAR:   g_wa_sort.
+  g_wa_sort-fieldname = gc_total.         "Col/Field name to sort
+  g_wa_sort-tabname   = gc_summary.       "Table name to sort
+  g_wa_sort-spos      = 2.                "Primary Sort Field
+  g_wa_sort-down      = abap_true.        "Sort Ascending
+  APPEND g_wa_sort TO git_sort.
+
+
+  CLEAR:   g_wa_sort.
+  g_wa_sort-fieldname = gc_kunnr.         "Col/Field name to sort
+  g_wa_sort-tabname   = gc_summary.       "Table name to sort
+  g_wa_sort-spos      = 3.                "Primary Sort Field
+  g_wa_sort-up        = abap_true.        "Sort Ascending
+  APPEND g_wa_sort TO git_sort.
+
+ENDFORM.                    "f_sort
+*&---------------------------------------------------------------------*
+*&      Form  PERF_WRITE_LIST
+*&---------------------------------------------------------------------*
+*       This form will generate the list per an internal table
+*       containing data to be displayed on the list and several
+*       internal tables and structures containing the list attributes
+*----------------------------------------------------------------------*
+FORM perf_write_list.
+
+* Format Columns to stay a Standard length
+  gv_layout-min_linesize           = gc_columns.
+
+  IF git_bsid_output IS INITIAL.
+    MESSAGE TEXT-023 TYPE gc_error.
+  ELSE.
+
+    CALL FUNCTION 'REUSE_ALV_LIST_DISPLAY'
+      EXPORTING
+        i_callback_program = gv_repid
+        is_layout          = gv_layout
+        it_fieldcat        = git_fieldcat[]
+        it_sort            = git_sort[]
+        i_default          = abap_true
+        i_save             = gc_a
+        it_events          = git_events
+        is_print           = gv_print
+      TABLES
+        t_outtab           = git_bsid_output
+      EXCEPTIONS
+        program_error      = 1
+        OTHERS             = 2.
+
+    IF sy-subrc <> 0.
+*      MESSAGE e113.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.                               " F_WRITE_LIST
+*&---------------------------------------------------------------------*
+*&      Form  PERF_end_OF_LIST
+*&---------------------------------------------------------------------*
+* Form to print the list of totals at the bottom of the report.
+*----------------------------------------------------------------------*
+FORM perf_end_of_list.
+  IF git_dso_total IS INITIAL.
+    MESSAGE TEXT-023 TYPE gc_error.
+  ELSE.
+*Sort the table by company code and total
+    SORT git_dso_total BY bukrs ASCENDING AS TEXT.
+
+*  Reformat Fieldcat using I_DSO_TOTAL.
+    c_summary = 'GIT_DSO_TOTAL'.
+    PERFORM perf_fieldcat.
+
+*  Alter layout to include totals column
+    gv_layout-list_append            = abap_true.    "Append this data set to rpt
+    gv_layout-no_subtotals           = abap_true.    "Get Rid of Subtotals
+    gv_layout-min_linesize           = gc_columns.
+
+
+    CALL FUNCTION 'REUSE_ALV_LIST_DISPLAY'
+      EXPORTING
+        i_callback_program = gv_repid
+        is_layout          = gv_layout
+        it_fieldcat        = git_fieldcat[]
+        it_sort            = git_sort[]
+*       it_events          = i_events
+        is_print           = gv_print
+      TABLES
+        t_outtab           = git_dso_total
+      EXCEPTIONS
+        program_error      = 1
+        OTHERS             = 2.
+    IF sy-subrc <> 0.
+*      MESSAGE e113.
+    ENDIF.
+
+  ENDIF.
+ENDFORM.

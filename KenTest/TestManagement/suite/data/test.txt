@@ -1,0 +1,28 @@
+1.Display the location of SMITH.
+2.List the total information of EMP table along with DNAME and Loc of all the
+emps Working Under ‘ACCOUNTING’ & ‘RESEARCH’ in the asc Deptno. 
+3. List the Empno, Ename, Sal, Dname of all the ‘MGRS’ and ‘ANALYST’
+working in New York, without receiving the Comm and order of Loc. 
+4.Display the Empno, Ename, Sal, Dname, Loc, Deptno, Job of all emps working at
+CHICAGO or working for ACCOUNTING dept with Ann Sal>28000, but the Sal
+should not be=3000 or 2800 who doesn’t belongs to the Mgr and whose no is
+having a digit ‘7’ or ‘8’ in 3rd position in the asc order of Deptno and desc order
+of job.
+5. List the details of the emps whose Salaries more than the employee BLAKE. 
+6. List the emps whose Jobs are same as ALLEN. 
+7. List the emps who are senior to King. 
+8. List the Emps of Deptno 20 whose Jobs are same as Deptno10.
+9. List the Emps whose Sal is same as FORD or SMITH in desc order of Sal.
+10.List the emps Whose Jobs are same as MILLER or Sal is more than ALLEN.
+11. List the emps whose jobs same as SMITH or ALLEN.
+12. Find details of highest paid employee.
+13. Find the highest paid employee of sales department.
+14. List the employees who are senior to most recently hired employee working
+under king.
+15. Display the average salaries of all the clerks.
+16. List the department,details where at least two emps are working.
+17. Display the emps whose manager name is jones.
+18. List the emps with dept names.
+19. List the emps who are not working in sales dept.
+20. List the emps whose sal is greater than his managers salary. 
+
